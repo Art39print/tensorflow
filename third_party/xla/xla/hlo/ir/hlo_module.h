@@ -826,10 +826,18 @@ class HloModule {
             std::pair<OriginalArray, std::unique_ptr<HloModule>>> {
    public:
     std::string ToString(HloPrintOptions options = HloPrintOptions()) const;
+
     OriginalValueRecoveryTableProto ToProto() const;
+
     static absl::StatusOr<HloModule::OriginalValueRecoveryTable> FromProto(
         const xla::OriginalValueRecoveryTableProto&
             original_value_recovery_table);
+
+    absl::Status AddRecoveryComputation(
+        const HloInstruction* removed_inst, HloInstruction* remaining_inst,
+        std::function<absl::StatusOr<std::unique_ptr<HloModule>>(
+            const HloInstruction*, HloInstruction*)>
+            create_recovery_computation);
   };
 
   const OriginalValueRecoveryTable& original_value_recovery_table() {

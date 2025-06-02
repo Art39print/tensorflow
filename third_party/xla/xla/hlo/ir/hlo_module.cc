@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -443,8 +444,10 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
               FrontendAttributesToString(frontend_attributes_));
   }
   if (!original_value_recovery_table_.empty()) {
+    HloPrintOptions new_options = options;
+    new_options.set_indent_amount(options.indent_amount() + 1);
     printer->Append(", origin_recovery_table={\n");
-    printer->Append(original_value_recovery_table_.ToString());
+    printer->Append(original_value_recovery_table_.ToString(new_options));
     printer->Append("}\n");
   }
   printer->Append("\n\n");
@@ -1422,10 +1425,10 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
     // a string. This is to make sure it can be parsed as a standalone module
     // without interferecing with theparseing of the main module the table is
     // associated with.
-    const std::string tab(2 * (options.indent_amount() + 1), ' ');
+    const std::string tab(2 * (options.indent_amount()), ' ');
     absl::StrAppend(&result, tab, "{", removed_original_array.ToString(),
                     "} : {", remaining_original_array.ToString(), "},\n", tab,
-                    "\"\n", tab,
+                    "\"\n",
                     recovery_module->entry_computation()->ToString(
                         HloPrintOptions()
                             .set_print_computation_mode(
@@ -1474,6 +1477,36 @@ HloModule::OriginalValueRecoveryTable::FromProto(
         std::make_pair(remaining_original_array, std::move(recovery_module));
   }
   return original_value_recovery_table;
+}
+
+absl::Status HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
+    const HloInstruction* removed_inst, HloInstruction* remaining_inst,
+    std::function<absl::StatusOr<std::unique_ptr<HloModule>>(
+        const HloInstruction*, HloInstruction*)>
+        create_recovery_computation) {
+  const std::shared_ptr<OriginalValue> removed_original_value =
+      removed_inst->original_value();
+  std::shared_ptr<OriginalValue> remaining_original_value =
+      remaining_inst->original_value();
+  if (removed_original_value) {
+    if (!remaining_original_value) {
+      remaining_original_value = OriginalValue::CreateFromInstruction(
+          remaining_inst, /*prefix=*/"placeholder_");
+      remaining_inst->set_original_value(remaining_original_value);
+    }
+
+    HloModule* module = remaining_inst->parent()->parent();
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> recovery_module,
+        create_recovery_computation(removed_inst, remaining_inst));
+
+    module->mutable_original_value_recovery_table()
+        [*removed_original_value->leaf_begin()->second] =
+        std::make_pair(*remaining_original_value->leaf_begin()->second,
+                       std::move(recovery_module));
+  }
+  return absl::OkStatus();
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
