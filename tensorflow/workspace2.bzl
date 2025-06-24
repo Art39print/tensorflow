@@ -27,8 +27,6 @@ load("@local_xla//third_party/implib_so:workspace.bzl", implib_so = "repo")
 load("@local_xla//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("@local_xla//third_party/nasm:workspace.bzl", nasm = "repo")
 load("@local_xla//third_party/nvshmem:workspace.bzl", nvshmem = "repo")
-load("@local_xla//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
-load("@local_xla//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("@local_xla//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("@local_xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("@local_xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
@@ -89,8 +87,6 @@ def _initialize_third_party():
     nasm()
     opencl_headers()
     pasta()
-    pybind11_abseil()
-    pybind11_bazel()
     robin_map()
     ruy()
     shardy()
@@ -396,10 +392,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_protobuf",
-        patch_file = ["@local_xla//third_party/protobuf:protobuf.patch"],
-        sha256 = "f645e6e42745ce922ca5388b1883ca583bafe4366cc74cf35c3c9299005136e2",
-        strip_prefix = "protobuf-5.28.3",
-        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v5.28.3.zip"),
+        patch_file = ["@local_xla//third_party/protobuf:protobuf-6.31.1.patch"],
+        sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
+        strip_prefix = "protobuf-6.31.1",
+        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"),
+        repo_mapping = {"@abseil-cpp": "@com_google_absl"},
     )
 
     tf_http_archive(
@@ -454,13 +451,13 @@ def _tf_repositories():
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "afbc5d78d6ba6d509cc6e264de0d49dcd7304db435cbf2d630385bacf49e066c",
-        strip_prefix = "grpc-1.68.2",
+        sha256 = "ae14a0de222485fd6e3baf52028c74acbd9ad8d685c813580401d3832cfae9f1",
+        strip_prefix = "grpc-1.72.2",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
-            "@local_xla//third_party/grpc:grpc.patch",
+            "@local_xla//third_party/grpc:grpc-1.72.2.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.68.2.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.72.2.tar.gz"),
     )
 
     tf_http_archive(
@@ -774,11 +771,28 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.13.4.tar.gz"),
-        sha256 = "efc901aa0aab439a3fea6efeaf930b5a349fb06394bf845c64ce15a9cf8f0240",
-        strip_prefix = "pybind11-2.13.4",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.13.6.tar.gz"),
+        sha256 = "e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20",
+        strip_prefix = "pybind11-2.13.6",
         build_file = "@local_xla//third_party:pybind11.BUILD",
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
+    )
+
+    # Updating past this commit causes failures with custom ops:
+    # ModuleNotFoundError: No module named 'pybind11_abseil'
+    tf_http_archive(
+        name = "pybind11_abseil",
+        patch_file = ["@local_xla//third_party/pybind11_abseil:remove_license.patch"],
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11_abseil/archive/13d4f99d5309df3d5afa80fe2ae332d7a2a64c6b.tar.gz"),
+        sha256 = "c6d0c6784e4d5681919731f1fa86e0b7cd010e770115bdb3a0285b3939ef2394",
+        strip_prefix = "pybind11_abseil-13d4f99d5309df3d5afa80fe2ae332d7a2a64c6b",
+    )
+
+    tf_http_archive(
+        name = "pybind11_bazel",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11_bazel/archive/v2.13.6.tar.gz"),
+        sha256 = "cae680670bfa6e82703c03f2a3c995408cdcbf43616d7bdd198ef45d3c327731",
+        strip_prefix = "pybind11_bazel-2.13.6",
     )
 
     tf_http_archive(
