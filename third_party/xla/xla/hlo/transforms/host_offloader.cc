@@ -318,6 +318,14 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       if (VLOG_IS_ON(1)) {
         previous.emplace(successor, instruction_and_shape_index);
       }
+      const Shape& successor_shape = ShapeUtil::GetSubshape(
+          successor.instruction->shape(), successor.shape_index);
+      if (successor_shape.has_layout() &&
+          successor_shape.layout().memory_space() == Layout::kHostMemorySpace) {
+        // When a successor shape already has host memory space, we know that
+        // we've visited it, so we can skip adding it to the queue here.
+        continue;
+      }
       queue.push(successor);
     }
   }
@@ -403,7 +411,8 @@ absl::StatusOr<bool> HostOffloader::HandleInputStreaming(
               subshape.layout().memory_space() == Layout::kHostMemorySpace) {
             HloInstruction* parameter_instruction =
                 entry_computation->parameter_instruction(i);
-            VLOG(1) << "Host parameter streamed into program with shape: "
+            VLOG(1) << "Host parameter #" << i
+                    << " streamed into program with shape: "
                     << subshape.ToString(/*print_layout=*/true) << " at index "
                     << index.ToString();
             TF_ASSIGN_OR_RETURN(
