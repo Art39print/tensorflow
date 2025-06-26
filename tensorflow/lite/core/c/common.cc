@@ -649,4 +649,11 @@ TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t) {
   return kTfLiteRunStepUnknown;
 }
 
+// Returns a sentinel value to be used as the user_data field of a TfLiteNode
+// when the kernel initialization fails.
+void* TfLiteKernelInitFailed() {
+  static char sentinel[1] = {0};
+  return reinterpret_cast<void*>(sentinel);
+}
+
 }  // extern "C"
