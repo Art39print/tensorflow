@@ -987,9 +987,11 @@ TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
   tuple->set_sharding(tuple_sharding);
   // Compatible with original shape as tuple tree structure and leaf ranks are
   // identical
-  auto clone_shape = ShapeUtil::MakeShape(F32, {3, 3});
+  auto clone_shape = ShapeUtil::MakeShape(F32, {2, 2});
   clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});
   auto tuple_clone = tuple->CloneWithNewOperands(clone_shape, {});
+  std::cout << "tuple: " << tuple->ToString() << "\n";
+  std::cout << "tuple_clone: " << tuple_clone->ToString() << "\n";
   EXPECT_EQ(tuple_clone->sharding(), tuple_sharding);
 }
 
@@ -3376,6 +3378,29 @@ TEST_F(HloInstructionTest, DifferentResultAccuracy) {
   result_accuracy_rtol.mutable_tolerance()->set_rtol(0.4);
   exp2->set_result_accuracy(result_accuracy_rtol);
   EXPECT_FALSE(exp1->equal_result_accuracy(exp2));
+}
+
+TEST_F(HloInstructionTest, PreserveOriginalValueThroughClone) {
+  HloComputation::Builder builder(TestName());
+  auto* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  constant->set_original_value(OriginalValue::CreateFromInstruction(constant));
+  auto* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
+  tuple->set_original_value(OriginalValue::CreateFromInstruction(constant));
+  auto clone_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto tuple_clone_same_shape = tuple->CloneWithNewOperands(
+      ShapeUtil::MakeTupleShape({clone_shape, clone_shape}), {});
+  clone_shape = ShapeUtil::MakeShape(F32, {3, 3});
+  auto tuple_clone_different_shape = tuple->CloneWithNewOperands(
+      ShapeUtil::MakeTupleShape({clone_shape, clone_shape}), {});
+  // Only the tuple clone with the same shape as the original tuple should
+  // preserve the original value.
+  EXPECT_TRUE(tuple_clone_same_shape->original_value());
+  EXPECT_FALSE(tuple_clone_different_shape->original_value());
 }
 
 }  // namespace
