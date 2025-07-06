@@ -32,6 +32,21 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   let constructor = "CreateTritonXLAExtractInsertToTritonPass()";
 }
 
+def TritonXLAContractDimsPass : Pass<"triton-xla-contract-dims", "mlir::ModuleOp"> {
+  let summary = "Remove superfluous size-1 dimensions.";
+  let description = [{
+    This pass tries to remove size-1 dimensions from tensors.
+  }];
+  let dependentDialects = [
+    "::mlir::triton::xla::XlaTritonDialect"
+  ];
+  let options = [
+    Option<"convert_to_reshape_", "convert-to-reshape", "bool", "true",
+           "Testing only: allow not converting contract_dims back to reshape.">,
+  ];
+  let constructor = "CreateTritonXLAContractDimsPass()";
+}
+
 def GeneralizeKernelSignaturePass
     : Pass<"generalize-kernel-signature"> {
   let summary = "Rewrite kernels to use generic data pointer arguments.";

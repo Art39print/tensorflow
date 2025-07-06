@@ -1983,8 +1983,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
                             /*shouldPrintAfterPass=*/print_always,
                             /*printModuleScope=*/true,
                             /*printAfterOnlyOnChange=*/false,
-                            /*printAfterOnlyOnFailure=*/true, *log_stream,
-                            /*opPrintingFlags=*/{});
+                            /*printAfterOnlyOnFailure=*/true, *log_stream);
       }
     } else {
       LOG(ERROR)
@@ -2001,6 +2000,11 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
       device_info,
       hlo_config.debug_options().xla_gpu_experimental_enable_triton_tma()));
+
+  pm.addPass(mlir::triton::xla::CreateTritonXLAContractDimsPass());
+  // DO NOT SUBMIT
+  // pm.getContext()->disableMultithreading();
+  // pm.enableIRPrinting();
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());
