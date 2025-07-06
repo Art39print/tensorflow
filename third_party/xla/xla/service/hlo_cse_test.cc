@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1024,6 +1026,30 @@ TEST_F(HloCseTest, ResultAccuracyCseKey) {
   // after CSE, should be tuple(exponential.2, exponential.3, exponential.4,
   // exponential.4)
   EXPECT_EQ(root->operand(2), root->operand(3));
+}
+
+TEST_F(HloCseTest, ScalarCustomCallNoOperands) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  custom-call.0 = s32[] custom-call(arg.0), custom_call_target="custom_call"
+  custom-call.1 = s32[] custom-call(arg.0), custom_call_target="custom_call"
+  ROOT tuple.0 = tuple(custom-call.0, custom-call.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_THAT(cse.Run(module.get()), IsOkAndHolds(true));
+
+  // Same custom call should used for each tuple element.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(root->operands().size(), 2);
+  EXPECT_EQ(root->operands()[0]->opcode(), HloOpcode::kCustomCall);
+  EXPECT_EQ(root->operands()[0]->unique_id(), root->operands()[1]->unique_id());
 }
 
 class HloCseCommutativeOpTest

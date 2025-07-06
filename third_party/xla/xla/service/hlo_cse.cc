@@ -292,7 +292,13 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     // over it.
     if (instruction->operand_count() == 0 &&
         instruction->opcode() != HloOpcode::kPartitionId &&
-        instruction->opcode() != HloOpcode::kReplicaId) {
+        instruction->opcode() != HloOpcode::kReplicaId &&
+        // Its not safe right now to simplify non-scalar custom calls here,
+        // as in many places those are used to create uninitialized buffers,
+        // and we don't have a way for users to specify that those cannot
+        // alias each others.
+        !(instruction->opcode() == HloOpcode::kCustomCall &&
+          ShapeUtil::IsEffectiveScalar(instruction->shape()))) {
       continue;
     }
     // Skip instructions which have side effects.
