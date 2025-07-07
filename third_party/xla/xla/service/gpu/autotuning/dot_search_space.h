@@ -45,7 +45,8 @@ class TritonDotFusionSearchSpace {
   // autotuner to try. If `force_contracting_split` is set, the search space
   // will be restricted to only include configs with the given split_k factor.
   std::vector<TritonGemmConfig> GenerateConfigs(
-      std::optional<int64_t> force_contracting_split = std::nullopt) const;
+      std::optional<int64_t> force_contracting_split = std::nullopt,
+      std::optional<bool> autotune_tma = std::nullopt) const;
 
   // Restrict the set of configs to the ones compatible with the hints list.
   // Generally, this will mean that configs are restricted to the ones that
@@ -206,6 +207,10 @@ class TritonDotFusionSearchSpace {
   // optimal one even though it does not occupy all cores.
   void EliminateLowOccupancyConfigs(
       std::vector<ConfigWithNotes>& configs) const;
+
+  // Extend the passed configs with TMA parameterization.
+  void AddTmaParameter(const ConfigWithNotes& config,
+                       std::vector<ConfigWithNotes>& updated_configs) const;
 
   // The order of these fields is important: the values of those defined earlier
   // are used to compute the values of later ones.

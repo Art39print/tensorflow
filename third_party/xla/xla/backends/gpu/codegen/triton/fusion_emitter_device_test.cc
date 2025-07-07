@@ -141,8 +141,8 @@ INSTANTIATE_TEST_SUITE_P(
     TmaAndDotLayoutTestParamsToString);
 
 TEST_P(TmaAndLayoutParameterizedTritonEmitterTest, Dot) {
-  const std::string kHloText =
-      absl::Substitute(R"(
+  const std::string kHloText = absl::Substitute(
+      R"(
 flhs {
   flhs.p0 = f32[32,16,256]{$0} parameter(0)
   ROOT lhs.root = f32[32,16,256]{$0} negate(flhs.p0)
@@ -159,7 +159,8 @@ fdot {
   fdot.lhs = f32[32,16,256]{$0} fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "1", "32"]}]
+        "output_tiles":[{"sizes":["16", "1", "32"]}],
+        "is_tma_allowed":$3
     }
   }
 }
@@ -167,7 +168,8 @@ fdot {
 fdot.rhs = f32[256,16,512]{$1} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
   "fusion_backend_config":{
     "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-      "output_tiles":[{"sizes":["32", "1", "64"]}]
+      "output_tiles":[{"sizes":["32", "1", "64"]}],
+      "is_tma_allowed":$3
     }
   }
 }
@@ -188,11 +190,12 @@ ENTRY entry {
           "output_tiles":[{"sizes":["1", "16", "64"]}],
           "num_warps":"1",
           "num_ctas":"1",
-          "num_stages":"1"}}}
+          "num_stages":"1",
+          "is_tma_allowed":$3}}}
 })",
-                       absl::StrJoin(GetParam().lhs_layout, ","),
-                       absl::StrJoin(GetParam().rhs_layout, ","),
-                       absl::StrJoin(GetParam().out_layout, ","));
+      absl::StrJoin(GetParam().lhs_layout, ","),
+      absl::StrJoin(GetParam().rhs_layout, ","),
+      absl::StrJoin(GetParam().out_layout, ","), GetParam().enable_tma);
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
@@ -1474,7 +1477,7 @@ ENTRY entry_computation {
 // Parameterized to make sure that slices are also handled correctly when TMA is
 // enabled.
 TEST_P(TmaParameterizedTritonEmitterTest, TestSliceWithTileThatNeedsMasking) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 HloModule m
 
 fused_computation {
@@ -1492,15 +1495,20 @@ ENTRY entry_computation {
         "output_tiles":[{"sizes":["8","4"]}],
         "num_warps":"1",
         "num_ctas":"1",
-        "num_stages":"1"}}}
+        "num_stages":"1",
+        "is_tma_allowed":"$0"}}}
 })";
+
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 // Parameterized to make sure that tile strides are handled correctly when TMA
 // is enabled.
 TEST_P(TmaParameterizedTritonEmitterTest, TestSliceWithNonMinorDimStrides) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 HloModule m
 
 fused_computation {
@@ -1518,8 +1526,12 @@ ENTRY entry_computation {
         "output_tiles":[{"sizes":["4","2","4"]}],
         "num_warps":"1",
         "num_ctas":"1",
-        "num_stages":"1"}}}
+        "num_stages":"1",
+        "is_tma_allowed":"$0"}}}
 })";
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -1552,7 +1564,7 @@ ENTRY entry_computation {
 
 TEST_P(TmaParameterizedTritonEmitterTest,
        TestSlice2DWithTileElementsNotAllContiguous) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 HloModule m
 
 fused_computation {
@@ -1573,8 +1585,13 @@ ENTRY entry_computation {
         "output_tiles":[{"sizes":["2","8"]}],
         "num_warps":"1",
         "num_ctas":"1",
-        "num_stages":"1"}}}
+        "num_stages":"1",
+        "is_tma_allowed":"$0"}}}
 })";
+
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -1609,7 +1626,7 @@ ENTRY entry_computation {
 // also invokes TritonXlaExtractInsertPass to check TTIR.
 TEST_P(TmaParameterizedTritonEmitterTest,
        TestSlice2DWithTileElementsNotAllContiguousUnaligned) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 HloModule m
 
 fused_computation {
@@ -1627,15 +1644,20 @@ ENTRY entry_computation {
           "output_tiles":[{"sizes":["2","8"]}],
           "num_warps":"1",
           "num_ctas":"1",
-          "num_stages":"1"}}}
+          "num_stages":"1",
+          "is_tma_allowed":"$0"}}}
 })";
+
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 // Parameterized to test TMA with various dimensionalities for loads/stores.
 TEST_P(TmaParameterizedTritonEmitterTest,
        ReshapeIntoBroadcastIsLoweredCorrectly) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 triton_computation {
   param_0 = f32[128,256]{1,0} parameter(0)
   reshape = f32[64,2,256]{2,1,0} reshape(param_0)
@@ -1652,8 +1674,13 @@ ENTRY main {
           "output_tiles":[{"sizes":["2","2","4","4"]}],
           "num_warps":"1",
           "num_ctas":"1",
-          "num_stages":"1"}}}
+          "num_stages":"1",
+          "is_tma_allowed":"$0"}}}
 })";
+
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK: tt.reshape
@@ -1774,7 +1801,7 @@ CHECK: tt.reshape
 
 TEST_P(TmaParameterizedTritonEmitterTest,
        SimpleBitcastNormalizedLayoutIsLoweredCorrectly) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 triton_computation {
   p = s16[16,32,64]{2,1,0} parameter(0)
   ROOT bitcast = s16[16,32,64] bitcast(p)
@@ -1790,9 +1817,13 @@ ENTRY entry_computation {
       "output_tiles":[{"sizes":["16","16","32"]}],
       "num_warps":"1",
       "num_ctas":"1",
-      "num_stages":"1"}}}
+      "num_stages":"1",
+      "is_tma_allowed":"$0"}}}
 })";
 
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -1800,7 +1831,7 @@ ENTRY entry_computation {
 // correctly when TMA is enabled.
 TEST_P(TmaParameterizedTritonEmitterTest,
        SimpleBitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 triton_computation {
   p = s32[64,32,16]{0,1,2} parameter(0)
   ROOT bitcast = s32[16,32,64] bitcast(p)
@@ -1816,9 +1847,13 @@ ENTRY entry_computation {
         "output_tiles":[{"sizes":["16","16","32"]}],
         "num_warps":"1",
         "num_ctas":"1",
-        "num_stages":"1"}}}
+        "num_stages":"1",
+        "is_tma_allowed":"$0"}}}
 })";
 
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -1826,7 +1861,7 @@ ENTRY entry_computation {
 // correctly when TMA is enabled.
 TEST_P(TmaParameterizedTritonEmitterTest,
        SimpleBitcastNonNormalizedOutputLayoutIsLoweredCorrectly) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 triton_computation {
 p = s32[64,16] parameter(0)
 ROOT bitcast = s32[16,64]{0,1} bitcast(p)
@@ -1842,9 +1877,13 @@ backend_config={
    "output_tiles":[{"sizes":["16","32"]}],
    "num_warps":"1",
    "num_ctas":"1",
-   "num_stages":"1"}}}
+   "num_stages":"1",
+   "is_tma_allowed":"$0"}}}
 })";
 
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -1853,7 +1892,7 @@ backend_config={
 // See tensorflow/compiler/xla/backends/gpu/codegen/triton/tma_utils.cc.
 TEST_P(TmaParameterizedTritonEmitterTest,
        ContiguousDimensionExceedsSwizzleLimitIsLoweredCorrectly) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 triton_computation {
 p = s32[16,128] parameter(0)
 ROOT bitcast = s32[16,128] bitcast(p)
@@ -1869,9 +1908,13 @@ backend_config={
  "output_tiles":[{"sizes":["16","64"]}],
  "num_warps":"1",
  "num_ctas":"1",
- "num_stages":"1"}}}
+ "num_stages":"1",
+ "is_tma_allowed":"$0"}}}
 })";
 
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -2548,7 +2591,7 @@ CHECK:     triton_xla.insert
 }
 
 TEST_P(TmaParameterizedTritonEmitterTest, BroadcastWorksCorrectly) {
-  constexpr absl::string_view kTritonHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 computation {
   p0 = s32[234]{0} parameter(0)
   ROOT broadcast = s32[2,234]{1,0} broadcast(p0), dimensions={1}
@@ -2565,8 +2608,12 @@ ENTRY entry_computation {
         "output_tiles":[{"sizes":["2","128"]}],
         "num_warps":"1",
         "num_ctas":"1",
-        "num_stages":"1"}}}
+        "num_stages":"1",
+        "is_tma_allowed":"$0"}}}
 })";
+
+  const bool is_tma_allowed = GetParam();
+  std::string kHloText = absl::Substitute(kHloTextTemplate, is_tma_allowed);
 
   constexpr absl::string_view kEmittersHloText = R"(
 computation {
@@ -2580,7 +2627,7 @@ ENTRY entry_computation {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_module,
-                          ParseAndReturnVerifiedModule(kTritonHloText));
+                          ParseAndReturnVerifiedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> emitters_module,
                           ParseAndReturnVerifiedModule(kEmittersHloText));
 
@@ -2722,7 +2769,7 @@ ENTRY entry_computation {
 }
 
 TEST_P(TmaParameterizedTritonEmitterTest, ConvertS4ToS8For2D) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloTextTemplate = R"(
 computation {
   p0 = s4[64,64] parameter(0)
   ROOT convert = s8[64,64] convert(p0)
@@ -2739,8 +2786,12 @@ ENTRY entry_computation {
           "output_tiles":[{"sizes":["32", "32"]}],
           "num_warps":"1",
           "num_ctas":"1",
-          "num_stages":"1"}}}
+          "num_stages":"1",
+          "is_tma_allowed":"$0"}}}
 })";
+
+  const bool is_tma_allowed = GetParam();
+  std::string kHloText = absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -2803,7 +2854,7 @@ CHECK: tt.dot {{.*}} -> tensor<16x16xf32>
 // Parameterized as a sanity check to make sure dots work with TMA.
 TEST_P(TmaParameterizedTritonEmitterTest,
        DotWithNestedFusionsIsEmittedCorrectly) {
-  const std::string kHloText = R"(
+  const std::string kHloTextTemplate = R"(
 flhs {
   flhs.p0 = f32[32,123] parameter(0)
   ROOT lhs.root = f32[32,123] negate(flhs.p0)
@@ -2820,14 +2871,16 @@ fdot {
   fdot.lhs = f32[32,123] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "32"]}]
+        "output_tiles":[{"sizes":["16", "32"]}],
+        "is_tma_allowed":"$0"
       }
     }
   }
   fdot.rhs = f32[123,512]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["32", "64"]}]
+        "output_tiles":[{"sizes":["32", "64"]}],
+        "is_tma_allowed":"$0"
       }
     }
   }
@@ -2847,8 +2900,12 @@ ENTRY entry {
           "output_tiles":[{"sizes":["16", "64"]}],
           "num_warps":"1",
           "num_ctas":"1",
-          "num_stages":"1"}}}
+          "num_stages":"1",
+          "is_tma_allowed":"$0"}}}
 })";
+
+  const bool is_tma_allowed = GetParam();
+  std::string kHloText = absl::Substitute(kHloTextTemplate, is_tma_allowed);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fdot", R"(
 CHECK:      func.func @triton_fn(%[[ARG0:[A-Za-z0-9_]*]]: tensor<32x123xf32>
 CHECK-SAME:                    %[[ARG1:[A-Za-z0-9_]*]]: tensor<123x512xf32>
@@ -3264,7 +3321,7 @@ TEST_P(TmaParameterizedTritonEmitterTest, DotFromBroadcastIsEmittedCorrectly) {
   // TODO(b/393299275): add a deviceless test to run the whole pipeline as
   // other passes might change the module but we are starting from a fixed
   // state.
-  const std::string kHloText = R"(
+  const std::string kHloTextTemplate = R"(
 HloModule module
 
 flhs (parameter_0: f32[256]) -> f32[256,128] {
@@ -3278,9 +3335,9 @@ frhs (parameter_0.1: f32[128,32]) -> f32[128,32] {
 
 triton_dot (p0: f32[256], p1: f32[128,32]) -> f32[256,32] {
   p0 = f32[256]{0} parameter(0)
-  lhs = f32[256,128]{1,0} fusion(p0), kind=kCustom, calls=flhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["32","16"]}]}}}
+  lhs = f32[256,128]{1,0} fusion(p0), kind=kCustom, calls=flhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1", "is_tma_allowed":"$0", "output_tiles":[{"sizes":["32","16"]}]}}}
   p1 = f32[128,32]{1,0} parameter(1)
-  rhs = f32[128,32]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["16","16"]}]}}}
+  rhs = f32[128,32]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1", "is_tma_allowed":"$0", "output_tiles":[{"sizes":["16","16"]}]}}}
   ROOT result = f32[256,32]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
     algorithm=dot_f32_f32_f32
@@ -3298,9 +3355,14 @@ ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,32]) -> f32[256,32] {
           "output_tiles":[{"sizes":["32","16"]}],
           "num_warps":"1",
           "num_stages":"1",
-          "num_ctas":"1"}}}
+          "num_ctas":"1",
+          "is_tma_allowed":"$0"}}}
 }
 )";
+
+  const bool is_tma_allowed = GetParam();
+  const std::string kHloText =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
