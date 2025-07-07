@@ -682,6 +682,7 @@ cc_library(
     name = "collective_pipelining_analyzer",
     srcs = ["collective_pipelining_analyzer.cc"],
     hdrs = ["collective_pipelining_analyzer.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla:util",
@@ -704,6 +705,7 @@ cc_library(
 xla_cc_test(
     name = "collective_pipelining_analyzer_test",
     srcs = ["collective_pipelining_analyzer_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":collective_pipelining_analyzer",
         "//xla/hlo/ir:hlo",
