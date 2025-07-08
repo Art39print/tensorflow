@@ -2412,6 +2412,103 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   return absl::OkStatus();
 }
 
+// Helper function to match source-target pairs for a pair of send/recv
+// instructions.
+absl::Status VerifySourceTargetPairs(const HloInstruction* first,
+                                     const HloInstruction* second) {
+  if (first == nullptr) {
+    return Internal("Expected send or recv instruction to be non-null");
+  }
+  const auto& send_source_target_pairs =
+      first->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
+  const auto& recv_source_target_pairs =
+      second->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
+  // If the source-target pairs are not set, skip this check
+  if (send_source_target_pairs == first->frontend_attributes().map().end() ||
+      recv_source_target_pairs == second->frontend_attributes().map().end()) {
+    return absl::OkStatus();
+  }
+  if (send_source_target_pairs->second != recv_source_target_pairs->second) {
+    return Internal(
+        "Expected send and recv instructions to have the same source-target "
+        "pairs, but found %s and %s",
+        first->ToString(), second->ToString());
+  }
+  return absl::OkStatus();
+}
+
+// Checks that the send/recv instructions in the module do not deadlock.
+absl::Status VerifySendRecvDeadlocks(const HloModule& module) {
+  enum DfaState { no_expectation, expect_send, expect_recv };
+  DfaState current_state = DfaState::no_expectation;
+  const HloInstruction* current_instruction = nullptr;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      switch (instruction->opcode()) {
+        case HloOpcode::kSend:
+          switch (current_state) {
+            case DfaState::no_expectation:
+              current_instruction = instruction;
+              current_state = DfaState::expect_recv;
+              break;
+            case DfaState::expect_send:
+              TF_RETURN_IF_ERROR(
+                  VerifySourceTargetPairs(current_instruction, instruction));
+              current_state = DfaState::no_expectation;
+              current_instruction = nullptr;
+              break;
+            case DfaState::expect_recv:
+              return Internal("Expected recv to match send, but found %s",
+                              instruction->ToString());
+            default:
+              break;
+          }
+          break;
+        case HloOpcode::kRecv:
+          switch (current_state) {
+            case DfaState::no_expectation:
+              current_instruction = instruction;
+              current_state = DfaState::expect_send;
+              break;
+            case DfaState::expect_send:
+              return Internal("Expected send to match recv, but found %s",
+                              instruction->ToString());
+            case DfaState::expect_recv:
+              TF_RETURN_IF_ERROR(
+                  VerifySourceTargetPairs(current_instruction, instruction));
+              current_state = DfaState::no_expectation;
+              current_instruction = nullptr;
+              break;
+            default:
+              break;
+          }
+          break;
+        case HloOpcode::kAllGather:
+        case HloOpcode::kAllReduce:
+        case HloOpcode::kAllToAll:
+        case HloOpcode::kRaggedAllToAll:
+        case HloOpcode::kCollectivePermute:
+        case HloOpcode::kReduceScatter:
+        case HloOpcode::kCollectiveBroadcast:
+          switch (current_state) {
+            case DfaState::expect_send:
+            case DfaState::expect_recv:
+              return Internal("Expected send or recv, but found %s",
+                              instruction->ToString());
+            default:
+              break;
+          }
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  return current_state == DfaState::no_expectation
+             ? absl::OkStatus()
+             : Internal("Program terminated with dangling send or recv.");
+}
+
 // Checks that the asynchronous computation only has a root and parameter
 // instructions.
 absl::Status VerifyAsyncComputation(const HloComputation* async_computation) {
@@ -3396,6 +3493,7 @@ absl::StatusOr<bool> HloVerifier::Run(
 
     TF_RETURN_IF_ERROR(VerifyHloStructure(module));
     TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
+    TF_RETURN_IF_ERROR(VerifySendRecvDeadlocks(*module));
     TF_RETURN_IF_ERROR(
         VerifyChannels(*module, target_metadata_->GetVerifierOpts()));
     TF_RETURN_IF_ERROR(VerifyInstructionNameUnchanged(
