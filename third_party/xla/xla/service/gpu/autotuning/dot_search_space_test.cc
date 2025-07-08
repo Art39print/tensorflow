@@ -298,10 +298,9 @@ TEST_F(DotSearchSpaceTest,
        FindsUniqueOccupancyMaximizingTilingForSmallProblem) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/32, /*rhs_parallel_dim=*/32,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/64, /*rhs_parallel_dim=*/64,
                           /*contracting_dim=*/32));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(SizeIs(1), Each(AllOf(BlockMIs(Eq(16)), BlockNIs(Eq(16)),
                                           SplitKIs(Eq(2))))));
