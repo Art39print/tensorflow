@@ -89,9 +89,10 @@ double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
 
   int common = 0;
   for (const HloInstructionNode* left_node : left_nodes) {
-    if (auto it = mappings.left_to_right_instruction_map.left.find(left_node);
-        it != mappings.left_to_right_instruction_map.left.end() &&
-        right_nodes_set.contains(it->second.node)) {
+    if (auto right_node =
+            mappings.left_to_right_instruction_map.GetRight(left_node);
+        right_node.has_value() &&
+        right_nodes_set.contains(right_node.value())) {
       ++common;
     }
   }
@@ -177,10 +178,9 @@ double AllOperandHloValuesMatchedScore(
         left.GetNode(left_hlo_values[i]->defining_instruction());
     HloInstructionNode* right_hlo_value_node =
         right.GetNode(right_hlo_values[i]->defining_instruction());
-    if (auto it = mappings.left_to_right_instruction_map.left.find(
+    if (auto right_node = mappings.left_to_right_instruction_map.GetRight(
             left_hlo_value_node);
-        it == mappings.left_to_right_instruction_map.left.end() ||
-        it->second.node != right_hlo_value_node) {
+        !right_node.has_value() || right_node.value() != right_hlo_value_node) {
       mappings_matched = false;
     }
     if (left_hlo_value_node->props.fingerprint !=
@@ -229,9 +229,10 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     HloGumgraphBfs(
         *left_node,
         [&](const HloInstructionNode& node, int distance) {
-          if (auto it = mappings.left_to_right_instruction_map.left.find(&node);
-              it != mappings.left_to_right_instruction_map.left.end()) {
-            right_seeds.push_back(it->second.node);
+          if (auto right_node =
+                  mappings.left_to_right_instruction_map.GetRight(&node);
+              right_node.has_value()) {
+            right_seeds.push_back(right_node.value());
           }
           // Don't pursue subgraphs with too many childrens. Allows us to visit
           // deeper subgraphs without getting stuck on a single node with a
